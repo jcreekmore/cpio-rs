@@ -207,6 +207,14 @@ impl<W: Write> Write for Writer<W> {
     }
 }
 
+pub fn trailer<W: Write>(w: W) -> io::Result<()> {
+     let b = Builder::new("TRAILER!!!")
+                .nlink(0);
+     let writer = b.write(w, 0);
+     let _ = try!(writer.finish());
+     Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -219,11 +227,12 @@ mod tests {
 
          let fp = File::create("/tmp/test_single.cpio").unwrap();
 
-         let b = Builder::new("/tmp/hello_world");
+         let b = Builder::new("./hello_world");
          let mut writer = b.write(fp, data.len() as u32);
          writer.write_all(data.as_bytes()).unwrap();
          writer.flush().unwrap();
-         let _ = writer.finish().unwrap();
+         let fp = writer.finish().unwrap();
+         trailer(fp).unwrap();
     }
 
     #[test]
@@ -232,18 +241,26 @@ mod tests {
 
          let fp = File::create("/tmp/test_multi.cpio").unwrap();
 
-         let b = Builder::new("/tmp/hello_world")
-                    .ino(1);
+         let b = Builder::new("./hello_world")
+                    .ino(1)
+                    .uid(1000)
+                    .gid(1000)
+                    .mode(0o100644);
          let mut writer = b.write(fp, data.len() as u32);
          writer.write_all(data.as_bytes()).unwrap();
          writer.flush().unwrap();
          let fp = writer.finish().unwrap();
 
-         let b = Builder::new("/tmp/hello_world2")
-                    .ino(2);
+         let b = Builder::new("./hello_world2")
+                    .ino(2)
+                    .uid(1000)
+                    .gid(1000)
+                    .mode(0o100644);
          let mut writer = b.write(fp, data.len() as u32);
          writer.write_all(data.as_bytes()).unwrap();
          writer.flush().unwrap();
-         let _ = writer.finish().unwrap();
+         let fp = writer.finish().unwrap();
+
+         trailer(fp).unwrap();
     }
 }
