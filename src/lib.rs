@@ -18,6 +18,7 @@ pub struct Writer<W: Write> {
     inner: W,
     written: u32,
     file_size: u32,
+    header_size: usize,
     header: Vec<u8>,
 }
 
@@ -100,11 +101,14 @@ impl Builder {
     }
 
     pub fn write<W: Write>(self, w: W, file_size: u32) -> Writer<W> {
+        let header = self.into_header(file_size);
+
         Writer {
             inner: w,
             written: 0,
             file_size: file_size,
-            header: self.into_header(file_size),
+            header_size: header.len(),
+            header: header,
         }
     }
 
@@ -171,8 +175,9 @@ impl<W: Write> Writer<W> {
         try!(self.try_write_header());
 
         if self.written == self.file_size {
-            if let Some(pad) = pad(self.file_size as usize) {
+            if let Some(pad) = pad(self.header_size + self.file_size as usize) {
                 try!(self.inner.write(&pad));
+                try!(self.inner.flush());
             }
         }
 
@@ -206,14 +211,36 @@ mod tests {
     use std::io::Write;
 
     #[test]
-    fn it_works() {
+    fn test_single_file() {
          let data = "Hello, World".to_string();
 
+         let fp = File::create("/tmp/test_single.cpio").unwrap();
+
          let b = Builder::new("/tmp/hello_world");
-         let fp = File::create("/tmp/test.cpio").unwrap();
          let mut writer = b.write(fp, data.len() as u32);
          writer.write_all(data.as_bytes()).unwrap();
-         writer.flush();
-         writer.finish().unwrap();
+         writer.flush().unwrap();
+         let _ = writer.finish().unwrap();
+    }
+
+    #[test]
+    fn test_multi_file() {
+         let data = "Hello, World".to_string();
+
+         let fp = File::create("/tmp/test_multi.cpio").unwrap();
+
+         let b = Builder::new("/tmp/hello_world")
+                    .ino(1);
+         let mut writer = b.write(fp, data.len() as u32);
+         writer.write_all(data.as_bytes()).unwrap();
+         writer.flush().unwrap();
+         let fp = writer.finish().unwrap();
+
+         let b = Builder::new("/tmp/hello_world2")
+                    .ino(2);
+         let mut writer = b.write(fp, data.len() as u32);
+         writer.write_all(data.as_bytes()).unwrap();
+         writer.flush().unwrap();
+         let _ = writer.finish().unwrap();
     }
 }
