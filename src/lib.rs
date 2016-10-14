@@ -1,5 +1,7 @@
 use std::io::{self, Write};
 
+const HEADER_LEN: usize = 110;
+
 pub struct Builder {
     name: String,
     ino: u32,
@@ -113,7 +115,7 @@ impl Builder {
     }
 
     fn into_header(self, file_size: u32) -> Vec<u8> {
-        let mut header = Vec::with_capacity(110);
+        let mut header = Vec::with_capacity(HEADER_LEN);
 
         // char    c_magic[6];
         header.extend("070701".to_string().as_bytes());
@@ -140,16 +142,17 @@ impl Builder {
         // char    c_rdevminor[8];
         header.extend(format!("{:08x}", self.rdev_minor).as_bytes());
         // char    c_namesize[8];
-        let name_len = self.name.len();
+        let name_len = self.name.len() + 1;
         header.extend(format!("{:08x}", name_len).as_bytes());
         // char    c_check[8];
         header.extend(format!("{:08x}", 0).as_bytes());
 
         // append the name to the end of the header
         header.extend(self.name.as_bytes());
+        header.push(0u8);
 
         // pad out to a multiple of 4 bytes
-        if let Some(pad) = pad(name_len) {
+        if let Some(pad) = pad(HEADER_LEN + name_len) {
             header.extend(pad);
         }
 
