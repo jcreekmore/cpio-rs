@@ -217,49 +217,72 @@ pub fn trailer<W: Write>(w: W) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs::File;
-    use std::io::Write;
+    use std::io::{copy, Cursor};
 
     #[test]
     fn test_single_file() {
+        // Set up our input file
         let data = "Hello, World".to_string();
+        let length = data.len() as u32;
+        let mut input = Cursor::new(data);
 
-        let fp = File::create("/tmp/test_single.cpio").unwrap();
+        // Set up our output file
+        let output = Cursor::new(vec![]);
 
+        // Set up the descriptor of our input file
         let b = Builder::new("./hello_world");
-        let mut writer = b.write(fp, data.len() as u32);
-        writer.write_all(data.as_bytes()).unwrap();
-        writer.flush().unwrap();
-        let fp = writer.finish().unwrap();
-        trailer(fp).unwrap();
+        // and get a writer for that input file
+        let mut writer = b.write(output, length);
+
+        // Copy the input file into our CPIO archive
+        copy(&mut input, &mut writer).unwrap();
+        let output = writer.finish().unwrap();
+
+        // Finish up by writing the trailer for the archive
+        trailer(output).unwrap();
     }
 
     #[test]
     fn test_multi_file() {
-        let data = "Hello, World".to_string();
+        // Set up our input files
+        let data1 = "Hello, World".to_string();
+        let length1 = data1.len() as u32;
+        let mut input1 = Cursor::new(data1);
 
-        let fp = File::create("/tmp/test_multi.cpio").unwrap();
+        let data2 = "Hello, World 2".to_string();
+        let length2 = data2.len() as u32;
+        let mut input2 = Cursor::new(data2);
 
+        // Set up our output file
+        let output = Cursor::new(vec![]);
+
+        // Set up the descriptor of our input file
         let b = Builder::new("./hello_world")
             .ino(1)
             .uid(1000)
             .gid(1000)
             .mode(0o100644);
-        let mut writer = b.write(fp, data.len() as u32);
-        writer.write_all(data.as_bytes()).unwrap();
-        writer.flush().unwrap();
-        let fp = writer.finish().unwrap();
+        // and get a writer for that input file
+        let mut writer = b.write(output, length1);
 
+        // Copy the input file into our CPIO archive
+        copy(&mut input1, &mut writer).unwrap();
+        let output = writer.finish().unwrap();
+
+        // Set up the descriptor of our second input file
         let b = Builder::new("./hello_world2")
             .ino(2)
             .uid(1000)
             .gid(1000)
             .mode(0o100644);
-        let mut writer = b.write(fp, data.len() as u32);
-        writer.write_all(data.as_bytes()).unwrap();
-        writer.flush().unwrap();
-        let fp = writer.finish().unwrap();
+        // and get a writer for that input file
+        let mut writer = b.write(output, length2);
 
-        trailer(fp).unwrap();
+        // Copy the second input file into our CPIO archive
+        copy(&mut input2, &mut writer).unwrap();
+        let output = writer.finish().unwrap();
+
+        // Finish up by writing the trailer for the archive
+        trailer(output).unwrap();
     }
 }
