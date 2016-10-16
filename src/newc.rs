@@ -207,11 +207,11 @@ impl<W: Write> Write for Writer<W> {
     }
 }
 
-pub fn trailer<W: Write>(w: W) -> io::Result<()> {
+pub fn trailer<W: Write>(w: W) -> io::Result<W> {
     let b = Builder::new("TRAILER!!!").nlink(0);
     let writer = b.write(w, 0);
-    let _ = try!(writer.finish());
-    Ok(())
+    let w = try!(writer.finish());
+    Ok(w)
 }
 
 #[cfg(test)]
