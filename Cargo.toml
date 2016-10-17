@@ -1,5 +1,6 @@
 [package]
 name = "cpio"
+description = "An API for creating CPIO archives"
 version = "0.1.0"
 authors = ["Jonathan Creekmore <jonathan@thecreekmores.org>"]
 license = "MIT"
