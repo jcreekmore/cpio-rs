@@ -1,14 +1,15 @@
 use std::io;
+use std::iter::Iterator;
 
 pub mod newc;
 pub use newc::Builder as NewcBuilder;
 
-pub fn write_cpio<RS, W>(mut inputs: Vec<(NewcBuilder, RS)>, output: W) -> io::Result<W>
-    where RS: io::Read + io::Seek,
+pub fn write_cpio<I, RS, W>(inputs: I, output: W) -> io::Result<W>
+    where I: Iterator<Item = (NewcBuilder, RS)> + Sized,
+          RS: io::Read + io::Seek,
           W: io::Write
 {
-    let output = try!(inputs.drain(..)
-        .enumerate()
+    let output = try!(inputs.enumerate()
         .fold(Ok(output), |output, (idx, (builder, mut input))| {
 
             // If the output is valid, try to write the next input file
@@ -41,7 +42,7 @@ mod tests {
     #[test]
     fn test_multi_file() {
         // Set up our input files
-        let input = vec![
+        let mut input = vec![
             (NewcBuilder::new("./hello_world")
                 .uid(1000)
                 .gid(1000)
@@ -56,6 +57,6 @@ mod tests {
         let output = Cursor::new(vec![]);
 
         // Write out the CPIO archive
-        let _ = write_cpio(input, output).unwrap();
+        let _ = write_cpio(input.drain(..), output).unwrap();
     }
 }
