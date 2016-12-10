@@ -3,8 +3,9 @@ use std::iter::Iterator;
 
 pub mod newc;
 pub use newc::Builder as NewcBuilder;
+pub use newc::DirEntry;
 
-fn length<R: io::Read + io::Seek>(s: &mut R) -> io::Result<u64> {
+pub fn length<R: io::Read + io::Seek>(s: &mut R) -> io::Result<u64> {
     // Grab the current stream offset
     let offset = try!(s.seek(io::SeekFrom::Current(0)));
     // Seek to the end and get the current offset as the length
@@ -44,10 +45,39 @@ pub fn write_cpio<I, RS, W>(inputs: I, output: W) -> io::Result<W>
     newc::trailer(output)
 }
 
+pub fn write_dentries<'a, I, W>(inputs: I, output: W) -> io::Result<W>
+    where I: Iterator<Item = DirEntry<'a>> + Sized,
+          W: io::Write
+{
+    let output = try!(inputs.enumerate()
+        .fold(Ok(output), |output, (idx, dentry)| {
+
+            // If the output is valid, try to write the next input file
+            output.and_then(move |output| {
+
+                let fp = match dentry {
+                    DirEntry::Dir(builder) => {
+                        builder.ino(idx as u32)
+                            .write(output, 0)
+                    }
+                    DirEntry::File(builder, mut reader, len) => {
+                        let mut fp = builder.ino(idx as u32)
+                            .write(output, len as u32);
+                        try!(io::copy(&mut reader, &mut fp));
+                        fp
+                    }
+                };
+                fp.finish()
+            })
+        }));
+
+    newc::trailer(output)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Cursor;
+    use std::io::{self, Cursor};
 
     #[test]
     fn test_multi_file() {
@@ -68,5 +98,27 @@ mod tests {
 
         // Write out the CPIO archive
         let _ = write_cpio(input.drain(..), output).unwrap();
+    }
+
+    #[test]
+    fn test_multi_file_dentry() {
+        // Set up our input files
+        let mut input = vec![DirEntry::dir(NewcBuilder::new("/tmp")
+                                 .uid(1000)
+                                 .gid(1000)
+                                 .mode(0o755)),
+                             DirEntry::file(NewcBuilder::new("/tmp/hello_world")
+                                                .uid(1000)
+                                                .gid(1000)
+                                                .mode(0o644),
+                                            Cursor::new("Hello, World".to_string()))];
+
+        let mut input = input.drain(..).collect::<io::Result<Vec<DirEntry>>>().unwrap();
+
+        // Set up our output file
+        let output = Cursor::new(vec![]);
+
+        // Write out the CPIO archive
+        let _ = write_dentries(input.drain(..), output).unwrap();
     }
 }

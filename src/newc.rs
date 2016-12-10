@@ -214,6 +214,28 @@ pub fn trailer<W: Write>(w: W) -> io::Result<W> {
     Ok(w)
 }
 
+pub enum DirEntry<'a> {
+    Dir(Builder),
+    File(Builder, Box<io::Read + 'a>, u64),
+}
+
+impl<'a> DirEntry<'a> {
+    pub fn dir(builder: Builder) -> io::Result<DirEntry<'a>> {
+        let mode = 0o040 | (&builder.mode & 0o777);
+        let builder = builder.mode(mode);
+        Ok(DirEntry::Dir(builder))
+    }
+
+    pub fn file<RS>(builder: Builder, mut input: RS) -> io::Result<DirEntry<'a>>
+        where RS: io::Read + io::Seek + 'static
+    {
+        let len = try!(super::length(&mut input));
+        let mode = 0o100 | (&builder.mode & 0o777);
+        let builder = builder.mode(mode);
+        Ok(DirEntry::File(builder, Box::new(input), len))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
