@@ -4,6 +4,17 @@ use std::iter::Iterator;
 pub mod newc;
 pub use newc::Builder as NewcBuilder;
 
+fn length<R: io::Read + io::Seek>(s: &mut R) -> io::Result<u64> {
+    // Grab the current stream offset
+    let offset = try!(s.seek(io::SeekFrom::Current(0)));
+    // Seek to the end and get the current offset as the length
+    let len = try!(s.seek(io::SeekFrom::End(0)));
+    // Go back to the previous stream offset
+    try!(s.seek(io::SeekFrom::Start(offset)));
+
+    Ok(len)
+}
+
 pub fn write_cpio<I, RS, W>(inputs: I, output: W) -> io::Result<W>
     where I: Iterator<Item = (NewcBuilder, RS)> + Sized,
           RS: io::Read + io::Seek,
@@ -16,8 +27,7 @@ pub fn write_cpio<I, RS, W>(inputs: I, output: W) -> io::Result<W>
             output.and_then(move |output| {
 
                 // Grab the length of the input file
-                let len = try!(input.seek(io::SeekFrom::End(0)));
-                try!(input.seek(io::SeekFrom::Start(0)));
+                let len = try!(length(&mut input));
 
                 // Create our writer fp with a unique inode number
                 let mut fp = builder.ino(idx as u32)
