@@ -1,9 +1,18 @@
+//! A library for reading and writing [CPIO
+//! archives](https://en.wikipedia.org/wiki/Cpio).
+//!
+//! CPIO archives can be in any of several
+//! [formats](https://www.gnu.org/software/cpio/manual/cpio.html#format).  For
+//! now, this library only supports the `newc` (SVR4) format.
+
 use std::io;
 use std::iter::Iterator;
 
 pub mod newc;
 pub use newc::Builder as NewcBuilder;
+pub use newc::Reader as NewcReader;
 
+/// Creates a new CPIO archive.
 pub fn write_cpio<I, RS, W>(inputs: I, output: W) -> io::Result<W>
     where I: Iterator<Item = (NewcBuilder, RS)> + Sized,
           RS: io::Read + io::Seek,

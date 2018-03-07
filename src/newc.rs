@@ -1,7 +1,37 @@
-use std::io::{self, Write};
+//! Read/write `newc` (SVR4) format archives.
+
+use std::io::{self, Read, Write};
 
 const HEADER_LEN: usize = 110;
 
+const MAGIC_NUMBER: &[u8] = b"070701";
+
+const TRAILER_NAME: &str = "TRAILER!!!";
+
+/// Metadata about one entry from an archive.
+pub struct Entry {
+    name: String,
+    ino: u32,
+    mode: u32,
+    uid: u32,
+    gid: u32,
+    nlink: u32,
+    mtime: u32,
+    file_size: u32,
+    dev_major: u32,
+    dev_minor: u32,
+    rdev_major: u32,
+    rdev_minor: u32,
+}
+
+/// Reads one entry header/data from an archive.
+pub struct Reader<R: Read> {
+    inner: R,
+    entry: Entry,
+    bytes_read: u32,
+}
+
+/// Builds metadata for one entry to be written into an archive.
 pub struct Builder {
     name: String,
     ino: u32,
@@ -16,6 +46,7 @@ pub struct Builder {
     rdev_minor: u32,
 }
 
+/// Writes one entry header/data into an archive.
 pub struct Writer<W: Write> {
     inner: W,
     written: u32,
@@ -32,6 +63,162 @@ fn pad(len: usize) -> Option<Vec<u8>> {
         Some(vec![0u8; repeat])
     } else {
         None
+    }
+}
+
+fn read_hex_u32<R: Read>(reader: &mut R) -> io::Result<u32> {
+    let mut bytes = [0u8; 8];
+    try!(reader.read_exact(&mut bytes));
+    if let Ok(string) = ::std::str::from_utf8(&bytes) {
+        if let Ok(value) = u32::from_str_radix(string, 16) {
+            return Ok(value);
+        }
+    }
+    Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid header field"))
+}
+
+impl Entry {
+    /// Returns the name of the file.
+    pub fn name(&self) -> &str { &self.name }
+
+    /// Returns the inode number of the file.
+    pub fn ino(&self) -> u32 { self.ino }
+
+    /// Returns the permission bits of the file.
+    pub fn mode(&self) -> u32 { self.mode }
+
+    /// Returns the UID for this file's owner.
+    pub fn uid(&self) -> u32 { self.uid }
+
+    /// Returns the GID for this file's group.
+    pub fn gid(&self) -> u32 { self.gid }
+
+    /// Returns the number of links associated with this file.
+    pub fn nlink(&self) -> u32 { self.nlink }
+
+    /// Returns the modification time of this file.
+    pub fn mtime(&self) -> u32 { self.mtime }
+
+    /// Returns the size of this file, in bytes.
+    pub fn file_size(&self) -> u32 { self.file_size }
+
+    pub fn dev_major(&self) -> u32 { self.dev_major }
+
+    pub fn dev_minor(&self) -> u32 { self.dev_minor }
+
+    pub fn rdev_major(&self) -> u32 { self.rdev_major }
+
+    pub fn rdev_minor(&self) -> u32 { self.rdev_minor }
+
+    /// Returns true if this is a trailer entry.
+    pub fn is_trailer(&self) -> bool { self.name == TRAILER_NAME }
+}
+
+impl<R: Read> Reader<R> {
+    /// Parses metadata for the next entry in an archive, and returns a reader
+    /// that will yield the entry data.
+    pub fn new(mut inner: R) -> io::Result<Reader<R>> {
+        // char    c_magic[6];
+        let mut magic = [0u8; 6];
+        try!(inner.read_exact(&mut magic));
+        if magic != MAGIC_NUMBER {
+            return Err(io::Error::new(io::ErrorKind::InvalidData,
+                                      "Invalid magic number"))
+        }
+        // char    c_ino[8];
+        let ino = try!(read_hex_u32(&mut inner));
+        // char    c_mode[8];
+        let mode = try!(read_hex_u32(&mut inner));
+        // char    c_uid[8];
+        let uid = try!(read_hex_u32(&mut inner));
+        // char    c_gid[8];
+        let gid = try!(read_hex_u32(&mut inner));
+        // char    c_nlink[8];
+        let nlink = try!(read_hex_u32(&mut inner));
+        // char    c_mtime[8];
+        let mtime = try!(read_hex_u32(&mut inner));
+        // char    c_filesize[8];
+        let file_size = try!(read_hex_u32(&mut inner));
+        // char    c_devmajor[8];
+        let dev_major = try!(read_hex_u32(&mut inner));
+        // char    c_devminor[8];
+        let dev_minor = try!(read_hex_u32(&mut inner));
+        // char    c_rdevmajor[8];
+        let rdev_major = try!(read_hex_u32(&mut inner));
+        // char    c_rdevminor[8];
+        let rdev_minor = try!(read_hex_u32(&mut inner));
+        // char    c_namesize[8];
+        let name_len = try!(read_hex_u32(&mut inner)) as usize;
+        // char    c_checksum[8];
+        let _checksum = try!(read_hex_u32(&mut inner));
+
+        // NUL-terminated name with length `name_len` (including NUL byte).
+        let mut name_bytes = vec![0u8; name_len];
+        try!(inner.read_exact(&mut name_bytes));
+        if name_bytes.last() != Some(&0) {
+            return Err(io::Error::new(io::ErrorKind::InvalidData,
+                                      "Entry name was not NUL-terminated"))
+        }
+        name_bytes.pop();
+        let name = match String::from_utf8(name_bytes) {
+            Ok(name) => name,
+            Err(_) => {
+                return Err(io::Error::new(io::ErrorKind::InvalidData,
+                                          "Entry name was not valid UTF-8"))
+            }
+        };
+
+        // Pad out to a multiple of 4 bytes.
+        if let Some(mut padding) = pad(HEADER_LEN + name_len) {
+            try!(inner.read_exact(&mut padding));
+        }
+
+        let entry = Entry {
+            name,
+            ino,
+            mode,
+            uid,
+            gid,
+            nlink,
+            mtime,
+            file_size,
+            dev_major,
+            dev_minor,
+            rdev_major,
+            rdev_minor,
+        };
+        Ok(Reader {
+            inner,
+            entry,
+            bytes_read: 0,
+        })
+    }
+
+    /// Returns the metadata for this entry.
+    pub fn entry(&self) -> &Entry { &self.entry }
+
+    /// Finishes reading this entry and returns the underlying reader in a
+    /// position ready to read the next entry (if any).
+    pub fn finish(mut self) -> io::Result<R> {
+        let remaining = self.entry.file_size - self.bytes_read;
+        if remaining > 0 {
+            try!(io::copy(&mut self.inner.by_ref().take(remaining as u64),
+                          &mut io::sink()));
+        }
+        if let Some(mut padding) = pad(self.entry.file_size as usize) {
+            try!(self.inner.read_exact(&mut padding));
+        }
+        Ok(self.inner)
+    }
+}
+
+impl<R: Read> Read for Reader<R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let remaining = self.entry.file_size - self.bytes_read;
+        let limit = buf.len().min(remaining as usize);
+        let num_bytes = try!(self.inner.read(&mut buf[..limit]));
+        self.bytes_read += num_bytes as u32;
+        Ok(num_bytes)
     }
 }
 
@@ -118,7 +305,7 @@ impl Builder {
         let mut header = Vec::with_capacity(HEADER_LEN);
 
         // char    c_magic[6];
-        header.extend("070701".to_string().as_bytes());
+        header.extend(MAGIC_NUMBER);
         // char    c_ino[8];
         header.extend(format!("{:08x}", self.ino).as_bytes());
         // char    c_mode[8];
@@ -207,8 +394,9 @@ impl<W: Write> Write for Writer<W> {
     }
 }
 
+/// Writes a trailer entry into an archive.
 pub fn trailer<W: Write>(w: W) -> io::Result<W> {
-    let b = Builder::new("TRAILER!!!").nlink(0);
+    let b = Builder::new(TRAILER_NAME).nlink(0);
     let writer = b.write(w, 0);
     let w = try!(writer.finish());
     Ok(w)
@@ -222,12 +410,12 @@ mod tests {
     #[test]
     fn test_single_file() {
         // Set up our input file
-        let data = "Hello, World".to_string();
+        let data: &[u8] = b"Hello, World";
         let length = data.len() as u32;
         let mut input = Cursor::new(data);
 
         // Set up our output file
-        let output = Cursor::new(vec![]);
+        let output = vec![];
 
         // Set up the descriptor of our input file
         let b = Builder::new("./hello_world");
@@ -239,22 +427,32 @@ mod tests {
         let output = writer.finish().unwrap();
 
         // Finish up by writing the trailer for the archive
-        trailer(output).unwrap();
+        let output = trailer(output).unwrap();
+
+        // Now read the archive back in and make sure we get the same data.
+        let mut reader = Reader::new(output.as_slice()).unwrap();
+        assert_eq!(reader.entry.name(), "./hello_world");
+        assert_eq!(reader.entry.file_size(), length);
+        let mut contents = vec![];
+        copy(&mut reader, &mut contents).unwrap();
+        assert_eq!(contents, data);
+        let reader = Reader::new(reader.finish().unwrap()).unwrap();
+        assert!(reader.entry().is_trailer());
     }
 
     #[test]
     fn test_multi_file() {
         // Set up our input files
-        let data1 = "Hello, World".to_string();
+        let data1: &[u8] = b"Hello, World";
         let length1 = data1.len() as u32;
         let mut input1 = Cursor::new(data1);
 
-        let data2 = "Hello, World 2".to_string();
+        let data2: &[u8] = b"Hello, World 2";
         let length2 = data2.len() as u32;
         let mut input2 = Cursor::new(data2);
 
         // Set up our output file
-        let output = Cursor::new(vec![]);
+        let output = vec![];
 
         // Set up the descriptor of our input file
         let b = Builder::new("./hello_world")
@@ -283,6 +481,29 @@ mod tests {
         let output = writer.finish().unwrap();
 
         // Finish up by writing the trailer for the archive
-        trailer(output).unwrap();
+        let output = trailer(output).unwrap();
+
+        // Now read the archive back in and make sure we get the same data.
+        let mut reader = Reader::new(output.as_slice()).unwrap();
+        assert_eq!(reader.entry().name(), "./hello_world");
+        assert_eq!(reader.entry().file_size(), length1);
+        assert_eq!(reader.entry().ino(), 1);
+        assert_eq!(reader.entry().uid(), 1000);
+        assert_eq!(reader.entry().gid(), 1000);
+        assert_eq!(reader.entry().mode(), 0o100644);
+        let mut contents = vec![];
+        copy(&mut reader, &mut contents).unwrap();
+        assert_eq!(contents, data1);
+
+        let mut reader = Reader::new(reader.finish().unwrap()).unwrap();
+        assert_eq!(reader.entry().name(), "./hello_world2");
+        assert_eq!(reader.entry().file_size(), length2);
+        assert_eq!(reader.entry().ino(), 2);
+        let mut contents = vec![];
+        copy(&mut reader, &mut contents).unwrap();
+        assert_eq!(contents, data2);
+
+        let reader = Reader::new(reader.finish().unwrap()).unwrap();
+        assert!(reader.entry().is_trailer());
     }
 }
