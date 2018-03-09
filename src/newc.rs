@@ -68,50 +68,77 @@ fn pad(len: usize) -> Option<Vec<u8>> {
 
 fn read_hex_u32<R: Read>(reader: &mut R) -> io::Result<u32> {
     let mut bytes = [0u8; 8];
-    try!(reader.read_exact(&mut bytes));
-    if let Ok(string) = ::std::str::from_utf8(&bytes) {
-        if let Ok(value) = u32::from_str_radix(string, 16) {
-            return Ok(value);
-        }
-    }
-    Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid header field"))
+    reader.read_exact(&mut bytes)?;
+    ::std::str::from_utf8(&bytes)
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Invalid utf-8 header field"))
+        .and_then(|string| {
+            u32::from_str_radix(string, 16).map_err(|_| {
+                io::Error::new(io::ErrorKind::InvalidData, "Invalid hex u32 header field")
+            })
+        })
 }
 
 impl Entry {
     /// Returns the name of the file.
-    pub fn name(&self) -> &str { &self.name }
+    pub fn name(&self) -> &str {
+        &self.name
+    }
 
     /// Returns the inode number of the file.
-    pub fn ino(&self) -> u32 { self.ino }
+    pub fn ino(&self) -> u32 {
+        self.ino
+    }
 
     /// Returns the permission bits of the file.
-    pub fn mode(&self) -> u32 { self.mode }
+    pub fn mode(&self) -> u32 {
+        self.mode
+    }
 
     /// Returns the UID for this file's owner.
-    pub fn uid(&self) -> u32 { self.uid }
+    pub fn uid(&self) -> u32 {
+        self.uid
+    }
 
     /// Returns the GID for this file's group.
-    pub fn gid(&self) -> u32 { self.gid }
+    pub fn gid(&self) -> u32 {
+        self.gid
+    }
 
     /// Returns the number of links associated with this file.
-    pub fn nlink(&self) -> u32 { self.nlink }
+    pub fn nlink(&self) -> u32 {
+        self.nlink
+    }
 
     /// Returns the modification time of this file.
-    pub fn mtime(&self) -> u32 { self.mtime }
+    pub fn mtime(&self) -> u32 {
+        self.mtime
+    }
 
     /// Returns the size of this file, in bytes.
-    pub fn file_size(&self) -> u32 { self.file_size }
+    pub fn file_size(&self) -> u32 {
+        self.file_size
+    }
 
-    pub fn dev_major(&self) -> u32 { self.dev_major }
+    pub fn dev_major(&self) -> u32 {
+        self.dev_major
+    }
 
-    pub fn dev_minor(&self) -> u32 { self.dev_minor }
+    pub fn dev_minor(&self) -> u32 {
+        self.dev_minor
+    }
 
-    pub fn rdev_major(&self) -> u32 { self.rdev_major }
+    pub fn rdev_major(&self) -> u32 {
+        self.rdev_major
+    }
 
-    pub fn rdev_minor(&self) -> u32 { self.rdev_minor }
+    pub fn rdev_minor(&self) -> u32 {
+        self.rdev_minor
+    }
 
     /// Returns true if this is a trailer entry.
-    pub fn is_trailer(&self) -> bool { self.name == TRAILER_NAME }
+    pub fn is_trailer(&self) -> bool {
+        self.name == TRAILER_NAME
+    }
 }
 
 impl<R: Read> Reader<R> {
@@ -120,57 +147,57 @@ impl<R: Read> Reader<R> {
     pub fn new(mut inner: R) -> io::Result<Reader<R>> {
         // char    c_magic[6];
         let mut magic = [0u8; 6];
-        try!(inner.read_exact(&mut magic));
+        inner.read_exact(&mut magic)?;
         if magic != MAGIC_NUMBER {
-            return Err(io::Error::new(io::ErrorKind::InvalidData,
-                                      "Invalid magic number"))
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Invalid magic number",
+            ));
         }
         // char    c_ino[8];
-        let ino = try!(read_hex_u32(&mut inner));
+        let ino = read_hex_u32(&mut inner)?;
         // char    c_mode[8];
-        let mode = try!(read_hex_u32(&mut inner));
+        let mode = read_hex_u32(&mut inner)?;
         // char    c_uid[8];
-        let uid = try!(read_hex_u32(&mut inner));
+        let uid = read_hex_u32(&mut inner)?;
         // char    c_gid[8];
-        let gid = try!(read_hex_u32(&mut inner));
+        let gid = read_hex_u32(&mut inner)?;
         // char    c_nlink[8];
-        let nlink = try!(read_hex_u32(&mut inner));
+        let nlink = read_hex_u32(&mut inner)?;
         // char    c_mtime[8];
-        let mtime = try!(read_hex_u32(&mut inner));
+        let mtime = read_hex_u32(&mut inner)?;
         // char    c_filesize[8];
-        let file_size = try!(read_hex_u32(&mut inner));
+        let file_size = read_hex_u32(&mut inner)?;
         // char    c_devmajor[8];
-        let dev_major = try!(read_hex_u32(&mut inner));
+        let dev_major = read_hex_u32(&mut inner)?;
         // char    c_devminor[8];
-        let dev_minor = try!(read_hex_u32(&mut inner));
+        let dev_minor = read_hex_u32(&mut inner)?;
         // char    c_rdevmajor[8];
-        let rdev_major = try!(read_hex_u32(&mut inner));
+        let rdev_major = read_hex_u32(&mut inner)?;
         // char    c_rdevminor[8];
-        let rdev_minor = try!(read_hex_u32(&mut inner));
+        let rdev_minor = read_hex_u32(&mut inner)?;
         // char    c_namesize[8];
-        let name_len = try!(read_hex_u32(&mut inner)) as usize;
+        let name_len = read_hex_u32(&mut inner)? as usize;
         // char    c_checksum[8];
-        let _checksum = try!(read_hex_u32(&mut inner));
+        let _checksum = read_hex_u32(&mut inner)?;
 
         // NUL-terminated name with length `name_len` (including NUL byte).
         let mut name_bytes = vec![0u8; name_len];
-        try!(inner.read_exact(&mut name_bytes));
+        inner.read_exact(&mut name_bytes)?;
         if name_bytes.last() != Some(&0) {
-            return Err(io::Error::new(io::ErrorKind::InvalidData,
-                                      "Entry name was not NUL-terminated"))
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Entry name was not NUL-terminated",
+            ));
         }
         name_bytes.pop();
-        let name = match String::from_utf8(name_bytes) {
-            Ok(name) => name,
-            Err(_) => {
-                return Err(io::Error::new(io::ErrorKind::InvalidData,
-                                          "Entry name was not valid UTF-8"))
-            }
-        };
+        let name = String::from_utf8(name_bytes).map_err(|_| {
+            io::Error::new(io::ErrorKind::InvalidData, "Entry name was not valid UTF-8")
+        })?;
 
         // Pad out to a multiple of 4 bytes.
         if let Some(mut padding) = pad(HEADER_LEN + name_len) {
-            try!(inner.read_exact(&mut padding));
+            inner.read_exact(&mut padding)?;
         }
 
         let entry = Entry {
@@ -195,18 +222,22 @@ impl<R: Read> Reader<R> {
     }
 
     /// Returns the metadata for this entry.
-    pub fn entry(&self) -> &Entry { &self.entry }
+    pub fn entry(&self) -> &Entry {
+        &self.entry
+    }
 
     /// Finishes reading this entry and returns the underlying reader in a
     /// position ready to read the next entry (if any).
     pub fn finish(mut self) -> io::Result<R> {
         let remaining = self.entry.file_size - self.bytes_read;
         if remaining > 0 {
-            try!(io::copy(&mut self.inner.by_ref().take(remaining as u64),
-                          &mut io::sink()));
+            io::copy(
+                &mut self.inner.by_ref().take(remaining as u64),
+                &mut io::sink(),
+            )?;
         }
         if let Some(mut padding) = pad(self.entry.file_size as usize) {
-            try!(self.inner.read_exact(&mut padding));
+            self.inner.read_exact(&mut padding)?;
         }
         Ok(self.inner)
     }
@@ -217,7 +248,7 @@ impl<R: Read> Read for Reader<R> {
         let remaining = self.entry.file_size - self.bytes_read;
         let limit = buf.len().min(remaining as usize);
         if limit > 0 {
-            let num_bytes = try!(self.inner.read(&mut buf[..limit]));
+            let num_bytes = self.inner.read(&mut buf[..limit])?;
             self.bytes_read += num_bytes as u32;
             Ok(num_bytes)
         } else {
@@ -353,25 +384,25 @@ impl Builder {
 
 impl<W: Write> Writer<W> {
     pub fn finish(mut self) -> io::Result<W> {
-        try!(self.do_finish());
+        self.do_finish()?;
         Ok(self.inner)
     }
 
     fn try_write_header(&mut self) -> io::Result<()> {
         if self.header.len() != 0 {
-            try!(self.inner.write_all(&self.header));
+            self.inner.write_all(&self.header)?;
             self.header.truncate(0);
         }
         Ok(())
     }
 
     fn do_finish(&mut self) -> io::Result<()> {
-        try!(self.try_write_header());
+        self.try_write_header()?;
 
         if self.written == self.file_size {
             if let Some(pad) = pad(self.header_size + self.file_size as usize) {
-                try!(self.inner.write(&pad));
-                try!(self.inner.flush());
+                self.inner.write(&pad)?;
+                self.inner.flush()?;
             }
         }
 
@@ -382,14 +413,16 @@ impl<W: Write> Writer<W> {
 impl<W: Write> Write for Writer<W> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         if self.written + buf.len() as u32 <= self.file_size {
-            try!(self.try_write_header());
+            self.try_write_header()?;
 
-            let n = try!(self.inner.write(buf));
+            let n = self.inner.write(buf)?;
             self.written += n as u32;
             Ok(n)
         } else {
-            Err(io::Error::new(io::ErrorKind::UnexpectedEof,
-                               "trying to write more than the specified file size"))
+            Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "trying to write more than the specified file size",
+            ))
         }
     }
 
@@ -402,8 +435,7 @@ impl<W: Write> Write for Writer<W> {
 pub fn trailer<W: Write>(w: W) -> io::Result<W> {
     let b = Builder::new(TRAILER_NAME).nlink(0);
     let writer = b.write(w, 0);
-    let w = try!(writer.finish());
-    Ok(w)
+    writer.finish()
 }
 
 #[cfg(test)]

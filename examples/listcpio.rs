@@ -10,9 +10,11 @@ fn main() {
         if reader.entry().is_trailer() {
             break;
         }
-        println!("{} ({} bytes)",
-                 reader.entry().name(),
-                 reader.entry().file_size());
+        println!(
+            "{} ({} bytes)",
+            reader.entry().name(),
+            reader.entry().file_size()
+        );
         file = reader.finish().unwrap();
     }
 }
