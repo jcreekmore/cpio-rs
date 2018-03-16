@@ -216,9 +216,13 @@ impl<R: Read> Read for Reader<R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let remaining = self.entry.file_size - self.bytes_read;
         let limit = buf.len().min(remaining as usize);
-        let num_bytes = try!(self.inner.read(&mut buf[..limit]));
-        self.bytes_read += num_bytes as u32;
-        Ok(num_bytes)
+        if limit > 0 {
+            let num_bytes = try!(self.inner.read(&mut buf[..limit]));
+            self.bytes_read += num_bytes as u32;
+            Ok(num_bytes)
+        } else {
+            Ok(0)
+        }
     }
 }
 
