@@ -191,6 +191,11 @@ impl<R: Read> Reader<R> {
             ));
         }
         name_bytes.pop();
+        // dracut-cpio sometimes pads the name to the next filesystem block.
+        // See https://github.com/dracutdevs/dracut/commit/a9c67046
+        while name_bytes.last() == Some(&0) {
+            name_bytes.pop();
+        }
         let name = String::from_utf8(name_bytes).map_err(|_| {
             io::Error::new(io::ErrorKind::InvalidData, "Entry name was not valid UTF-8")
         })?;
