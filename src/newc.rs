@@ -438,7 +438,7 @@ impl<W: Write> Write for Writer<W> {
 
 /// Writes a trailer entry into an archive.
 pub fn trailer<W: Write>(w: W) -> io::Result<W> {
-    let b = Builder::new(TRAILER_NAME).nlink(0);
+    let b = Builder::new(TRAILER_NAME).nlink(1);
     let writer = b.write(w, 0);
     writer.finish()
 }
