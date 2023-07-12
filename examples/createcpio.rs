@@ -2,7 +2,7 @@
 
 use cpio::{NewcBuilder, write_cpio};
 use std::fs::File;
-use std::io::{BufRead, BufReader, stdin, stdout};
+use std::io::{self, BufRead, stdin, stdout};
 
 fn load_file(path: &str) -> io::Result<(NewcBuilder, File)> {
 	let builder = NewcBuilder::new(path)
@@ -18,7 +18,7 @@ fn main() {
 	let inputs = stdin()
 		.lock()
 		.lines()
-		.map(|path| load_file(path.unwrap()).unwrap());
+		.map(|path| load_file(&path.unwrap()).unwrap());
 		
 	write_cpio(inputs, stdout()).unwrap();
 }
