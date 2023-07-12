@@ -15,7 +15,8 @@ fn load_file(path: &str) -> io::Result<(NewcBuilder, File)> {
 }
 
 fn main() {
-	let inputs = stdin()
+	let stdin = stdin()
+	let inputs = stdin
 		.lock()
 		.lines()
 		.map(|path| load_file(&path.unwrap()).unwrap());
