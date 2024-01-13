@@ -285,8 +285,8 @@ impl<R: Read> Read for Reader<R> {
 
 impl Builder {
     /// Create the metadata for one CPIO entry
-    pub fn new(name: &str) -> Builder {
-        Builder {
+    pub fn new(name: &str) -> Self {
+        Self {
             name: name.to_string(),
             ino: 0,
             mode: 0,
@@ -303,38 +303,38 @@ impl Builder {
 
     /// Set the inode number for this file. In modern times however, typically this is just a
     /// a unique index ID for the file, rather than the actual inode number.
-    pub fn ino(mut self, ino: u32) -> Builder {
+    pub fn ino(mut self, ino: u32) -> Self {
         self.ino = ino;
         self
     }
 
     /// Set the file's "mode" - the same as an inode "mode" field - containing permission bits
     /// and a bit of metadata about the type of file represented.
-    pub fn mode(mut self, mode: u32) -> Builder {
+    pub fn mode(mut self, mode: u32) -> Self {
         self.mode = mode;
         self
     }
 
     /// Set this file's UID.
-    pub fn uid(mut self, uid: u32) -> Builder {
+    pub fn uid(mut self, uid: u32) -> Self {
         self.uid = uid;
         self
     }
 
     /// Set this file's GID.
-    pub fn gid(mut self, gid: u32) -> Builder {
+    pub fn gid(mut self, gid: u32) -> Self {
         self.gid = gid;
         self
     }
 
     /// Set the number of links associated with this file.
-    pub fn nlink(mut self, nlink: u32) -> Builder {
+    pub fn nlink(mut self, nlink: u32) -> Self {
         self.nlink = nlink;
         self
     }
 
     /// Set the modification time of this file.
-    pub fn mtime(mut self, mtime: u32) -> Builder {
+    pub fn mtime(mut self, mtime: u32) -> Self {
         self.mtime = mtime;
         self
     }
@@ -344,7 +344,7 @@ impl Builder {
     ///
     /// Device IDs are comprised of a major and minor component. The major component identifies
     /// the class of device, while the minor component identifies a specific device of that class.
-    pub fn dev_major(mut self, dev_major: u32) -> Builder {
+    pub fn dev_major(mut self, dev_major: u32) -> Self {
         self.dev_major = dev_major;
         self
     }
@@ -354,7 +354,7 @@ impl Builder {
     ///
     /// Device IDs are comprised of a major and minor component. The major component identifies
     /// the class of device, while the minor component identifies a specific device of that class.
-    pub fn dev_minor(mut self, dev_minor: u32) -> Builder {
+    pub fn dev_minor(mut self, dev_minor: u32) -> Self {
         self.dev_minor = dev_minor;
         self
     }
@@ -364,7 +364,7 @@ impl Builder {
     ///
     /// Device IDs are comprised of a major and minor component. The major component identifies
     /// the class of device, while the minor component identifies a specific device of that class.
-    pub fn rdev_major(mut self, rdev_major: u32) -> Builder {
+    pub fn rdev_major(mut self, rdev_major: u32) -> Self {
         self.rdev_major = rdev_major;
         self
     }
@@ -374,7 +374,7 @@ impl Builder {
     ///
     /// Device IDs are comprised of a major and minor component. The major component identifies
     /// the class of device, while the minor component identifies a specific device of that class.
-    pub fn rdev_minor(mut self, rdev_minor: u32) -> Builder {
+    pub fn rdev_minor(mut self, rdev_minor: u32) -> Self {
         self.rdev_minor = rdev_minor;
         self
     }
