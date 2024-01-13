@@ -2,7 +2,7 @@
 
 use std::io::{self, Read, Seek, SeekFrom, Write};
 
-const HEADER_LEN: usize = 110;
+const HEADER_LEN: usize = 110; // 6 byte magic number + 104 bytes of metadata
 
 const MAGIC_NUMBER: &[u8] = b"070701";
 
@@ -115,12 +115,13 @@ impl Entry {
         &self.name
     }
 
-    /// Returns the inode number of the file.
+    /// Returns the inode number of the file. Sometimes this is just an index.
     pub fn ino(&self) -> u32 {
         self.ino
     }
 
-    /// Returns the permission bits of the file.
+    /// Returns the file's "mode" - the same as an inode "mode" field - containing permission bits
+    /// and a bit of metadata about the type of file represented.
     pub fn mode(&self) -> u32 {
         self.mode
     }
@@ -150,18 +151,38 @@ impl Entry {
         self.file_size
     }
 
+    /// Returns the major component of the device ID, describing the device on which this file
+    /// resides.
+    ///
+    /// Device IDs are comprised of a major and minor component. The major component identifies
+    /// the class of device, while the minor component identifies a specific device of that class.
     pub fn dev_major(&self) -> u32 {
         self.dev_major
     }
 
+    /// Returns the minor component of the device ID, describing the device on which this file
+    /// resides.
+    ///
+    /// Device IDs are comprised of a major and minor component. The major component identifies
+    /// the class of device, while the minor component identifies a specific device of that class.
     pub fn dev_minor(&self) -> u32 {
         self.dev_minor
     }
 
+    /// Returns the major component of the rdev ID, describes the device that this file
+    /// (inode) represents.
+    ///
+    /// Device IDs are comprised of a major and minor component. The major component identifies
+    /// the class of device, while the minor component identifies a specific device of that class.
     pub fn rdev_major(&self) -> u32 {
         self.rdev_major
     }
 
+    /// Returns the minor component of the rdev ID, field describes the device that this file
+    /// (inode) represents.
+    ///
+    /// Device IDs are comprised of a major and minor component. The major component identifies
+    /// the class of device, while the minor component identifies a specific device of that class.
     pub fn rdev_minor(&self) -> u32 {
         self.rdev_minor
     }
@@ -331,6 +352,7 @@ impl<R: Read> Read for Reader<R> {
 }
 
 impl Builder {
+    /// Create the metadata for one CPIO entry
     pub fn new(name: &str) -> Builder {
         Builder {
             name: name.to_string(),
@@ -347,62 +369,92 @@ impl Builder {
         }
     }
 
+    /// Set the inode number for this file. In modern times however, typically this is just a
+    /// a unique index ID for the file, rather than the actual inode number.
     pub fn ino(mut self, ino: u32) -> Builder {
         self.ino = ino;
         self
     }
 
+    /// Set the file's "mode" - the same as an inode "mode" field - containing permission bits
+    /// and a bit of metadata about the type of file represented.
     pub fn mode(mut self, mode: u32) -> Builder {
         self.mode = mode;
         self
     }
 
+    /// Set this file's UID.
     pub fn uid(mut self, uid: u32) -> Builder {
         self.uid = uid;
         self
     }
 
+    /// Set this file's GID.
     pub fn gid(mut self, gid: u32) -> Builder {
         self.gid = gid;
         self
     }
 
+    /// Set the number of links associated with this file.
     pub fn nlink(mut self, nlink: u32) -> Builder {
         self.nlink = nlink;
         self
     }
 
+    /// Set the modification time of this file.
     pub fn mtime(mut self, mtime: u32) -> Builder {
         self.mtime = mtime;
         self
     }
 
+    /// Set the major component of the device ID, describing the device on which this file
+    /// resides.
+    ///
+    /// Device IDs are comprised of a major and minor component. The major component identifies
+    /// the class of device, while the minor component identifies a specific device of that class.
     pub fn dev_major(mut self, dev_major: u32) -> Builder {
         self.dev_major = dev_major;
         self
     }
 
+    /// Set the minor component of the device ID, describing the device on which this file
+    /// resides.
+    ///
+    /// Device IDs are comprised of a major and minor component. The major component identifies
+    /// the class of device, while the minor component identifies a specific device of that class.
     pub fn dev_minor(mut self, dev_minor: u32) -> Builder {
         self.dev_minor = dev_minor;
         self
     }
 
+    /// Set the major component of the rdev ID, describes the device that this file
+    /// (inode) represents.
+    ///
+    /// Device IDs are comprised of a major and minor component. The major component identifies
+    /// the class of device, while the minor component identifies a specific device of that class.
     pub fn rdev_major(mut self, rdev_major: u32) -> Builder {
         self.rdev_major = rdev_major;
         self
     }
 
+    /// Set the minor component of the rdev ID, field describes the device that this file
+    /// (inode) represents.
+    ///
+    /// Device IDs are comprised of a major and minor component. The major component identifies
+    /// the class of device, while the minor component identifies a specific device of that class.
     pub fn rdev_minor(mut self, rdev_minor: u32) -> Builder {
         self.rdev_minor = rdev_minor;
         self
     }
 
+    /// Set the mode file type of the entry
     pub fn set_mode_file_type(mut self, file_type: ModeFileType) -> Builder {
         self.mode &= !ModeFileType::MASK;
         self.mode |= u32::from(file_type);
         self
     }
 
+    /// Write out the entry to the provided writer.
     pub fn write<W: Write>(self, w: W, file_size: u32) -> Writer<W> {
         let header = self.into_header(file_size);
 
@@ -415,6 +467,7 @@ impl Builder {
         }
     }
 
+    /// Build a newc header from the entry metadata.
     fn into_header(self, file_size: u32) -> Vec<u8> {
         let mut header = Vec::with_capacity(HEADER_LEN);
 
