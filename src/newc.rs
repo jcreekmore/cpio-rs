@@ -66,6 +66,32 @@ fn pad(len: usize) -> Option<Vec<u8>> {
     }
 }
 
+pub enum ModeFlag {
+    Symlink,
+    Fifo,
+    Char,
+    Block,
+    NetworkSpecial,
+    Socket,
+    Directory,
+    Regular,
+}
+
+impl From<ModeFlag> for u32 {
+    fn from(m: ModeFlag) -> u32 {
+        match m {
+            ModeFlag::Fifo => 0o010000,
+            ModeFlag::Char => 0o020000,
+            ModeFlag::Directory => 0o040000,
+            ModeFlag::Block => 0o060000,
+            ModeFlag::Regular => 0o100000,
+            ModeFlag::NetworkSpecial => 0o110000,
+            ModeFlag::Symlink => 0o120000,
+            ModeFlag::Socket => 0o140000,
+        }
+    }
+}
+
 fn read_hex_u32<R: Read>(reader: &mut R) -> io::Result<u32> {
     let mut bytes = [0u8; 8];
     reader.read_exact(&mut bytes)?;
@@ -326,6 +352,11 @@ impl Builder {
 
     pub fn rdev_minor(mut self, rdev_minor: u32) -> Builder {
         self.rdev_minor = rdev_minor;
+        self
+    }
+
+    pub fn set_mode_flag(mut self, flag: ModeFlag) -> Builder {
+        self.mode |= u32::from(flag);
         self
     }
 
