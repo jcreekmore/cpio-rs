@@ -32,6 +32,7 @@ pub struct Reader<R: Read> {
 }
 
 /// Builds metadata for one entry to be written into an archive.
+#[derive(Clone)]
 pub struct Builder {
     name: String,
     ino: u32,
