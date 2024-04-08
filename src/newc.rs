@@ -66,7 +66,7 @@ fn pad(len: usize) -> Option<Vec<u8>> {
     }
 }
 
-pub enum ModeFlag {
+pub enum ModeFileType {
     Symlink,
     Fifo,
     Char,
@@ -77,17 +77,17 @@ pub enum ModeFlag {
     Regular,
 }
 
-impl From<ModeFlag> for u32 {
-    fn from(m: ModeFlag) -> u32 {
+impl From<ModeFileType> for u32 {
+    fn from(m: ModeFileType) -> u32 {
         match m {
-            ModeFlag::Fifo => 0o010000,
-            ModeFlag::Char => 0o020000,
-            ModeFlag::Directory => 0o040000,
-            ModeFlag::Block => 0o060000,
-            ModeFlag::Regular => 0o100000,
-            ModeFlag::NetworkSpecial => 0o110000,
-            ModeFlag::Symlink => 0o120000,
-            ModeFlag::Socket => 0o140000,
+            ModeFileType::Fifo => 0o010000,
+            ModeFileType::Char => 0o020000,
+            ModeFileType::Directory => 0o040000,
+            ModeFileType::Block => 0o060000,
+            ModeFileType::Regular => 0o100000,
+            ModeFileType::NetworkSpecial => 0o110000,
+            ModeFileType::Symlink => 0o120000,
+            ModeFileType::Socket => 0o140000,
         }
     }
 }
@@ -355,8 +355,8 @@ impl Builder {
         self
     }
 
-    pub fn set_mode_flag(mut self, flag: ModeFlag) -> Builder {
-        self.mode |= u32::from(flag);
+    pub fn set_mode_file_type(mut self, file_type: ModeFileType) -> Builder {
+        self.mode |= u32::from(file_type);
         self
     }
 
