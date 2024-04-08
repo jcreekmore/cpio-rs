@@ -67,6 +67,36 @@ fn pad(len: usize) -> Option<Vec<u8>> {
     }
 }
 
+pub enum ModeFileType {
+    Symlink,
+    Fifo,
+    Char,
+    Block,
+    NetworkSpecial,
+    Socket,
+    Directory,
+    Regular,
+}
+
+impl ModeFileType {
+    const MASK: u32 = 0o170000;
+}
+
+impl From<ModeFileType> for u32 {
+    fn from(m: ModeFileType) -> u32 {
+        match m {
+            ModeFileType::Fifo => 0o010000,
+            ModeFileType::Char => 0o020000,
+            ModeFileType::Directory => 0o040000,
+            ModeFileType::Block => 0o060000,
+            ModeFileType::Regular => 0o100000,
+            ModeFileType::NetworkSpecial => 0o110000,
+            ModeFileType::Symlink => 0o120000,
+            ModeFileType::Socket => 0o140000,
+        }
+    }
+}
+
 fn read_hex_u32<R: Read>(reader: &mut R) -> io::Result<u32> {
     let mut bytes = [0u8; 8];
     reader.read_exact(&mut bytes)?;
@@ -327,6 +357,12 @@ impl Builder {
 
     pub fn rdev_minor(mut self, rdev_minor: u32) -> Builder {
         self.rdev_minor = rdev_minor;
+        self
+    }
+
+    pub fn set_mode_file_type(mut self, file_type: ModeFileType) -> Builder {
+        self.mode &= !ModeFileType::MASK;
+        self.mode |= u32::from(file_type);
         self
     }
 
