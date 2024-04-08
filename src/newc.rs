@@ -77,6 +77,10 @@ pub enum ModeFileType {
     Regular,
 }
 
+impl ModeFileType {
+    const MASK: u32 = 0o170000;
+}
+
 impl From<ModeFileType> for u32 {
     fn from(m: ModeFileType) -> u32 {
         match m {
@@ -356,6 +360,7 @@ impl Builder {
     }
 
     pub fn set_mode_file_type(mut self, file_type: ModeFileType) -> Builder {
+        self.mode &= !ModeFileType::MASK;
         self.mode |= u32::from(file_type);
         self
     }
