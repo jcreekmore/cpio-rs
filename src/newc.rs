@@ -1,6 +1,6 @@
 //! Read/write `newc` (SVR4) format archives.
 
-use std::io::{self, Read, Write};
+use std::io::{self, Read, Write, Seek, SeekFrom};
 
 const HEADER_LEN: usize = 110;
 
@@ -274,6 +274,28 @@ impl<R: Read> Reader<R> {
         }
         if let Some(mut padding) = pad(self.entry.file_size as usize) {
             self.inner.read_exact(&mut padding)?;
+        }
+        Ok(self.inner)
+    }
+}
+
+impl<R: Read + Seek> Reader<R> {
+    /// Returns the offset within inner, which can be useful for efficient
+    /// io::copy()/copy_file_range() of file data.
+    pub fn ioff(&mut self) -> io::Result<u64> {
+        self.inner.seek(SeekFrom::Current(0))
+    }
+
+    /// Finishes by seeking past file data in this entry and returns the
+    /// underlying reader in a position ready to read the next entry (if any).
+    pub fn seek_finish(mut self) -> io::Result<R> {
+        let mut remaining: i64 = (self.entry.file_size - self.bytes_read).into();
+        match pad(self.entry.file_size as usize) {
+            Some(p) => remaining += p.len() as i64,
+            None{} => {},
+        };
+        if remaining > 0 {
+            self.inner.seek(SeekFrom::Current(remaining))?;
         }
         Ok(self.inner)
     }
