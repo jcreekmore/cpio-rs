@@ -409,9 +409,9 @@ impl Builder {
         Writer {
             inner: w,
             written: 0,
-            file_size: file_size,
+            file_size,
             header_size: header.len(),
-            header: header,
+            header,
         }
     }
 
@@ -468,7 +468,7 @@ impl<W: Write> Writer<W> {
     }
 
     fn try_write_header(&mut self) -> io::Result<()> {
-        if self.header.len() != 0 {
+        if !self.header.is_empty() {
             self.inner.write_all(&self.header)?;
             self.header.truncate(0);
         }
@@ -480,7 +480,7 @@ impl<W: Write> Writer<W> {
 
         if self.written == self.file_size {
             if let Some(pad) = pad(self.header_size + self.file_size as usize) {
-                self.inner.write(&pad)?;
+                self.inner.write_all(&pad)?;
                 self.inner.flush()?;
             }
         }

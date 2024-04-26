@@ -21,22 +21,20 @@ where
 {
     let output = inputs
         .enumerate()
-        .fold(Ok(output), |output, (idx, (builder, mut input))| {
+        .try_fold(output, |output, (idx, (builder, mut input))| {
             // If the output is valid, try to write the next input file
-            output.and_then(move |output| {
-                // Grab the length of the input file
-                let len = input.seek(io::SeekFrom::End(0))?;
-                input.seek(io::SeekFrom::Start(0))?;
+            // Grab the length of the input file
+            let len = input.seek(io::SeekFrom::End(0))?;
+            input.seek(io::SeekFrom::Start(0))?;
 
-                // Create our writer fp with a unique inode number
-                let mut fp = builder.ino(idx as u32).write(output, len as u32);
+            // Create our writer fp with a unique inode number
+            let mut fp = builder.ino(idx as u32).write(output, len as u32);
 
-                // Write out the file
-                io::copy(&mut input, &mut fp)?;
+            // Write out the file
+            io::copy(&mut input, &mut fp)?;
 
-                // And finish off the input file
-                fp.finish()
-            })
+            // And finish off the input file
+            fp.finish()
         })?;
 
     newc::trailer(output)
