@@ -1,6 +1,6 @@
 //! Read/write `newc` (SVR4) format archives.
 
-use std::io::{self, Read, Write, Seek, SeekFrom};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 
 const HEADER_LEN: usize = 110;
 
@@ -277,22 +277,37 @@ impl<R: Read> Reader<R> {
         }
         Ok(self.inner)
     }
+
+    /// Write the contents of the entry out to the writer using `io::copy`, taking advantage of any
+    /// platform-specific behavior to effeciently copy data that `io::copy` can use. If any of the
+    /// file data has already been read through the `Read` interface, this will copy the
+    /// _remaining_ data in the entry.
+    pub fn to_writer<W: Write>(mut self, mut writer: W) -> io::Result<R> {
+        let remaining = self.entry.file_size - self.bytes_read;
+        if remaining > 0 {
+            io::copy(&mut self.inner.by_ref().take(remaining as u64), &mut writer)?;
+        }
+        if let Some(mut padding) = pad(self.entry.file_size as usize) {
+            self.inner.read_exact(&mut padding)?;
+        }
+        Ok(self.inner)
+    }
 }
 
 impl<R: Read + Seek> Reader<R> {
     /// Returns the offset within inner, which can be useful for efficient
     /// io::copy()/copy_file_range() of file data.
-    pub fn ioff(&mut self) -> io::Result<u64> {
-        self.inner.seek(SeekFrom::Current(0))
+    pub fn offset(&mut self) -> io::Result<u64> {
+        self.inner.stream_position()
     }
 
-    /// Finishes by seeking past file data in this entry and returns the
+    /// Skip past all remaining file data in this entry, returning the
     /// underlying reader in a position ready to read the next entry (if any).
-    pub fn seek_finish(mut self) -> io::Result<R> {
+    pub fn skip(mut self) -> io::Result<R> {
         let mut remaining: i64 = (self.entry.file_size - self.bytes_read).into();
         match pad(self.entry.file_size as usize) {
             Some(p) => remaining += p.len() as i64,
-            None{} => {},
+            None {} => {}
         };
         if remaining > 0 {
             self.inner.seek(SeekFrom::Current(remaining))?;
@@ -604,6 +619,73 @@ mod tests {
         assert_eq!(contents, data2);
 
         let reader = Reader::new(reader.finish().unwrap()).unwrap();
+        assert!(reader.entry().is_trailer());
+    }
+
+    #[test]
+    fn test_multi_file_to_writer() {
+        // Set up our input files
+        let data1: &[u8] = b"Hello, World";
+        let length1 = data1.len() as u32;
+        let mut input1 = Cursor::new(data1);
+
+        let data2: &[u8] = b"Hello, World 2";
+        let length2 = data2.len() as u32;
+        let mut input2 = Cursor::new(data2);
+
+        // Set up our output file
+        let output = vec![];
+
+        // Set up the descriptor of our input file
+        let b = Builder::new("./hello_world")
+            .ino(1)
+            .uid(1000)
+            .gid(1000)
+            .mode(0o100644);
+        // and get a writer for that input file
+        let mut writer = b.write(output, length1);
+
+        // Copy the input file into our CPIO archive
+        copy(&mut input1, &mut writer).unwrap();
+        let output = writer.finish().unwrap();
+
+        // Set up the descriptor of our second input file
+        let b = Builder::new("./hello_world2")
+            .ino(2)
+            .uid(1000)
+            .gid(1000)
+            .mode(0o100644);
+        // and get a writer for that input file
+        let mut writer = b.write(output, length2);
+
+        // Copy the second input file into our CPIO archive
+        copy(&mut input2, &mut writer).unwrap();
+        let output = writer.finish().unwrap();
+
+        // Finish up by writing the trailer for the archive
+        let output = trailer(output).unwrap();
+
+        // Now read the archive back in and make sure we get the same data.
+        let reader = Reader::new(output.as_slice()).unwrap();
+        assert_eq!(reader.entry().name(), "./hello_world");
+        assert_eq!(reader.entry().file_size(), length1);
+        assert_eq!(reader.entry().ino(), 1);
+        assert_eq!(reader.entry().uid(), 1000);
+        assert_eq!(reader.entry().gid(), 1000);
+        assert_eq!(reader.entry().mode(), 0o100644);
+        let mut contents = vec![];
+        let handle = reader.to_writer(&mut contents).unwrap();
+        assert_eq!(contents, data1);
+
+        let reader = Reader::new(handle).unwrap();
+        assert_eq!(reader.entry().name(), "./hello_world2");
+        assert_eq!(reader.entry().file_size(), length2);
+        assert_eq!(reader.entry().ino(), 2);
+        let mut contents = vec![];
+        let handle = reader.to_writer(&mut contents).unwrap();
+        assert_eq!(contents, data2);
+
+        let reader = Reader::new(handle).unwrap();
         assert!(reader.entry().is_trailer());
     }
 }
