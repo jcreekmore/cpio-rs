@@ -1,7 +1,7 @@
 [package]
 name = "cpio"
 description = "An API for creating CPIO archives"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["Jonathan Creekmore <jonathan@thecreekmores.org>"]
 license = "MIT"
 repository = "https://github.com/jcreekmore/cpio-rs"
