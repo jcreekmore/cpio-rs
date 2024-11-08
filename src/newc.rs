@@ -11,12 +11,14 @@ const TRAILER_NAME: &str = "TRAILER!!!";
 
 /// Whether this header is of the "new ascii" form (without checksum) or the "crc" form which
 /// is structurally identical but includes a checksum, depending on the magic number present.
+#[derive(Clone)]
 enum EntryType {
     Crc,
     Newc,
 }
 
 /// Metadata about one entry from an archive.
+#[derive(Clone)]
 pub struct Entry {
     entry_type: EntryType,
     name: String,
