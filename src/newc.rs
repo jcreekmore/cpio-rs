@@ -79,6 +79,11 @@ fn pad(len: usize) -> Option<Vec<u8>> {
     }
 }
 
+fn name_padding(name_len: usize) -> Option<Vec<u8>> {
+    // Reduce before adding so even the largest declared name cannot overflow.
+    pad(HEADER_LEN % 4 + name_len % 4)
+}
+
 pub enum ModeFileType {
     Symlink,
     Fifo,
@@ -262,8 +267,18 @@ impl<R: Read> Reader<R> {
         let checksum = read_hex_u32(&mut inner)?;
 
         // NUL-terminated name with length `name_len` (including NUL byte).
-        let mut name_bytes = vec![0u8; name_len];
-        inner.read_exact(&mut name_bytes)?;
+        // Grow only as bytes arrive, rather than allocating from an untrusted length.
+        let mut name_bytes = Vec::new();
+        inner
+            .by_ref()
+            .take(name_len as u64)
+            .read_to_end(&mut name_bytes)?;
+        if name_bytes.len() != name_len {
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "Truncated entry name",
+            ));
+        }
         if name_bytes.last() != Some(&0) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -281,7 +296,7 @@ impl<R: Read> Reader<R> {
         })?;
 
         // Pad out to a multiple of 4 bytes.
-        if let Some(mut padding) = pad(HEADER_LEN + name_len) {
+        if let Some(mut padding) = name_padding(name_len) {
             inner.read_exact(&mut padding)?;
         }
 
@@ -553,7 +568,7 @@ impl Builder {
         header.push(0u8);
 
         // pad out to a multiple of 4 bytes
-        if let Some(pad) = pad(HEADER_LEN + name_len) {
+        if let Some(pad) = name_padding(name_len) {
             header.extend(pad);
         }
 
@@ -621,6 +636,79 @@ pub fn trailer<W: Write>(w: W) -> io::Result<W> {
 mod tests {
     use super::*;
     use std::io::{copy, Cursor};
+
+    fn header_with_name_len(name_len: u32) -> Vec<u8> {
+        let mut header = Builder::new("").write(Vec::new(), 0).finish().unwrap();
+        header.truncate(HEADER_LEN);
+        header[94..102].copy_from_slice(format!("{:08x}", name_len).as_bytes());
+        header
+    }
+
+    #[test]
+    fn test_huge_truncated_name() {
+        for name_len in [0x2000_0000, u32::MAX] {
+            for partial_name in [b"".as_slice(), b"partial\0".as_slice()] {
+                let mut archive = header_with_name_len(name_len);
+                archive.extend_from_slice(partial_name);
+                let error = Reader::new(archive.as_slice()).err().unwrap();
+                assert_eq!(error.kind(), io::ErrorKind::UnexpectedEof);
+            }
+        }
+    }
+
+    #[test]
+    fn test_name_read_does_not_request_declared_length() {
+        // Only implements Read, and checks that a short input does not result in
+        // a large read buffer allocated from the header's length.
+        struct ShortReader(Cursor<Vec<u8>>);
+        impl Read for ShortReader {
+            fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+                assert!(buf.len() <= 8192, "oversized read buffer: {}", buf.len());
+                self.0.read(buf)
+            }
+        }
+        let input = ShortReader(Cursor::new(header_with_name_len(1024 * 1024)));
+        let error = Reader::new(input).err().unwrap();
+        assert_eq!(error.kind(), io::ErrorKind::UnexpectedEof);
+    }
+
+    #[test]
+    fn test_padded_name_preserves_payload_and_next_entry() {
+        for name_len in [4096, 4097, 4098, 4099] {
+            let mut archive = header_with_name_len(name_len);
+            archive[54..62].copy_from_slice(b"00000004");
+            archive.extend_from_slice(b"file");
+            archive.resize(HEADER_LEN + name_len as usize, 0);
+            while archive.len() % 4 != 0 {
+                archive.push(0);
+            }
+            archive.extend_from_slice(b"data");
+            let archive = trailer(archive).unwrap();
+
+            let mut reader = Reader::new(archive.as_slice()).unwrap();
+            assert_eq!(reader.entry().name(), "file");
+            let mut payload = Vec::new();
+            reader.read_to_end(&mut payload).unwrap();
+            assert_eq!(payload, b"data");
+            assert!(Reader::new(reader.finish().unwrap())
+                .unwrap()
+                .entry()
+                .is_trailer());
+        }
+    }
+
+    #[test]
+    fn test_name_padding_at_usize_limit() {
+        // Exercises the overflowing addition on both 32-bit and 64-bit targets.
+        for (name_len, expected) in [
+            (usize::MAX, 3),
+            (usize::MAX - 1, 0),
+            (usize::MAX - 2, 1),
+            (usize::MAX - 3, 2),
+        ] {
+            assert_eq!(name_padding(name_len).map_or(0, |p| p.len()), expected);
+        }
+    }
 
     #[test]
     fn test_single_file() {
